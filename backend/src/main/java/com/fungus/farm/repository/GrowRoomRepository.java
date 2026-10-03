@@ -36,15 +36,18 @@ public class GrowRoomRepository {
                 SELECT gr.id, gr.room_code, gr.orientation, gr.area, gr.species, gr.status,
                        COUNT(DISTINCT r.id) AS rack_count,
                        COUNT(DISTINCT fb.id) AS fruiting_batch_count,
-                       CASE WHEN er.over_limit = 1 THEN 1 ELSE 0 END AS alert_count
+                       CASE WHEN er.over_limit = 1 THEN 1 ELSE 0 END AS alert_count,
+                       edo.id AS disposal_id, edo.status AS disposal_status
                 FROM grow_room gr
                 LEFT JOIN rack r ON r.room_id = gr.id
-                LEFT JOIN fruiting_batch fb ON fb.room_id = gr.id AND fb.status <> '已结束'
+                LEFT JOIN fruiting_batch fb ON fb.room_id = gr.id AND fb.status NOT IN ('已结束','环境暂停','人工暂停')
                 LEFT JOIN environment_record er ON er.id = (
                     SELECT e2.id FROM environment_record e2
-                    WHERE e2.room_id = gr.id ORDER BY e2.recorded_at DESC LIMIT 1
+                    WHERE e2.room_id = gr.id ORDER BY e2.recorded_at DESC, e2.id DESC LIMIT 1
                 )
-                GROUP BY gr.id, gr.room_code, gr.orientation, gr.area, gr.species, gr.status, er.over_limit
+                LEFT JOIN environment_disposal_order edo ON edo.room_id = gr.id AND edo.active_flag = 1
+                GROUP BY gr.id, gr.room_code, gr.orientation, gr.area, gr.species, gr.status,
+                         er.over_limit, edo.id, edo.status
                 ORDER BY gr.room_code
                 """;
         return jdbc.queryForList(sql, Map.of());
@@ -65,6 +68,8 @@ public class GrowRoomRepository {
     }
 
     public int countFruitingBatches() {
-        return jdbc.queryForObject("SELECT COUNT(*) FROM fruiting_batch WHERE status <> '已结束'", Map.of(), Integer.class);
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) FROM fruiting_batch WHERE status NOT IN ('已结束','环境暂停','人工暂停')",
+                Map.of(), Integer.class);
     }
 }

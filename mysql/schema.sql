@@ -3,6 +3,10 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS harvest_inventory;
 DROP TABLE IF EXISTS contamination_record;
 DROP TABLE IF EXISTS harvest_flush;
+DROP TABLE IF EXISTS environment_disposal_event;
+DROP TABLE IF EXISTS environment_disposal_reading;
+DROP TABLE IF EXISTS environment_disposal_batch;
+DROP TABLE IF EXISTS environment_disposal_order;
 DROP TABLE IF EXISTS fruiting_batch;
 DROP TABLE IF EXISTS environment_record;
 DROP TABLE IF EXISTS rack_slot;
@@ -64,7 +68,7 @@ CREATE TABLE environment_record (
     light_lux INT NOT NULL,
     recorded_at DATETIME NOT NULL,
     over_limit TINYINT(1) NOT NULL DEFAULT 0,
-    KEY idx_environment_room_time (room_id, recorded_at),
+    UNIQUE KEY uk_environment_room_time (room_id, recorded_at),
     CONSTRAINT fk_environment_room FOREIGN KEY (room_id) REFERENCES grow_room(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -80,6 +84,80 @@ CREATE TABLE fruiting_batch (
     status VARCHAR(16) NOT NULL,
     CONSTRAINT fk_fruiting_room FOREIGN KEY (room_id) REFERENCES grow_room(id),
     CONSTRAINT fk_fruiting_bag FOREIGN KEY (bag_batch_id) REFERENCES bag_batch(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 环境越限处置单：每个菇房至多一张活动单（active_flag=1），已解除后置 NULL（MySQL 唯一索引允许多个 NULL）
+CREATE TABLE environment_disposal_order (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_no VARCHAR(40) NOT NULL UNIQUE,
+    room_id BIGINT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    trigger_metrics VARCHAR(64) NOT NULL,
+    trigger_temperature DECIMAL(5,2) NULL,
+    trigger_humidity DECIMAL(5,2) NULL,
+    trigger_co2_ppm INT NULL,
+    trigger_recorded_start DATETIME NOT NULL,
+    trigger_recorded_end DATETIME NOT NULL,
+    triggered_at DATETIME NOT NULL,
+    assignee VARCHAR(40) NULL,
+    accepted_at DATETIME NULL,
+    expected_finish_at DATETIME NULL,
+    over_count INT NOT NULL DEFAULT 3,
+    recovered_count INT NOT NULL DEFAULT 0,
+    last_over_at DATETIME NULL,
+    last_over_temperature DECIMAL(5,2) NULL,
+    last_over_humidity DECIMAL(5,2) NULL,
+    last_over_co2_ppm INT NULL,
+    recovered_since DATETIME NULL,
+    resolution_note VARCHAR(255) NULL,
+    resolved_by VARCHAR(40) NULL,
+    resolved_at DATETIME NULL,
+    active_flag TINYINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_disposal_active_room (room_id, active_flag),
+    KEY idx_disposal_status (status),
+    CONSTRAINT fk_disposal_room FOREIGN KEY (room_id) REFERENCES grow_room(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 处置时间线：触发 / 接单 / 处理记录 / 持续越限 / 恶化 / 恢复待确认 / 再次越限退回 / 解除
+CREATE TABLE environment_disposal_event (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
+    event_type VARCHAR(24) NOT NULL,
+    detail VARCHAR(500) NOT NULL,
+    operator VARCHAR(40) NOT NULL DEFAULT '系统',
+    ref_record_id BIGINT NULL,
+    occurred_at DATETIME NOT NULL,
+    KEY idx_event_order (order_id, occurred_at, id),
+    CONSTRAINT fk_event_order FOREIGN KEY (order_id) REFERENCES environment_disposal_order(id),
+    CONSTRAINT fk_event_record FOREIGN KEY (ref_record_id) REFERENCES environment_record(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 被处置单暂停的出菇批次快照：解除时只恢复这里且当前仍是“环境暂停”的批次
+CREATE TABLE environment_disposal_batch (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
+    batch_id BIGINT NOT NULL,
+    batch_no VARCHAR(40) NOT NULL,
+    original_status VARCHAR(16) NOT NULL,
+    restored_at DATETIME NULL,
+    UNIQUE KEY uk_disposal_batch (order_id, batch_id),
+    CONSTRAINT fk_dsb_order FOREIGN KEY (order_id) REFERENCES environment_disposal_order(id),
+    CONSTRAINT fk_dsb_batch FOREIGN KEY (batch_id) REFERENCES fruiting_batch(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 处置单关联读数：TRIGGER=触发三连，OVER=处置期累积越限，RECOVERY=恢复计数读数
+CREATE TABLE environment_disposal_reading (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
+    record_id BIGINT NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    linked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_disposal_reading (order_id, record_id),
+    KEY idx_dsr_record (record_id),
+    CONSTRAINT fk_dsr_order FOREIGN KEY (order_id) REFERENCES environment_disposal_order(id),
+    CONSTRAINT fk_dsr_record FOREIGN KEY (record_id) REFERENCES environment_record(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE harvest_flush (

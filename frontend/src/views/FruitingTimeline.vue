@@ -77,7 +77,8 @@ onMounted(loadBatches)
         <p>沿批次生长节奏记录一潮、二潮与三潮，产量柱随采收入账即时增长。</p>
       </div>
       <el-select v-model="selectedId" class="batch-switch" placeholder="选择出菇批次">
-        <el-option v-for="batch in batches" :key="batch.id" :value="batch.id" :label="`${batch.batch_no} · ${batch.species}`" />
+        <el-option v-for="batch in batches" :key="batch.id" :value="batch.id"
+                   :label="`${batch.batch_no} · ${batch.species}${batch.status === '环境暂停' ? '（环境暂停）' : ''}`" />
       </el-select>
     </div>
 
@@ -85,6 +86,14 @@ onMounted(loadBatches)
       <div><span>当前批次</span><strong>{{ selectedBatch.batch_no }}</strong></div>
       <div><span>菇房</span><strong>{{ selectedBatch.room_code }}</strong></div>
       <div><span>菌包批次</span><strong>{{ selectedBatch.bag_batch_no }}</strong></div>
+      <div><span>批次状态</span>
+        <strong>
+          {{ selectedBatch.status }}
+          <el-tag v-if="selectedBatch.disposal_status" size="small" type="danger" effect="plain" class="batch-disposal-tag">
+            菇房{{ selectedBatch.disposal_status }}
+          </el-tag>
+        </strong>
+      </div>
       <div><span>预计产量</span><strong>{{ selectedBatch.expected_yield }} kg</strong></div>
       <div class="remaining"><span>剩余预产量</span><strong>{{ remaining.toFixed(1) }} kg</strong></div>
     </div>

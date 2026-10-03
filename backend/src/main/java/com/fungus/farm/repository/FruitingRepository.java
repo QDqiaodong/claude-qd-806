@@ -34,15 +34,17 @@ public class FruitingRepository {
         String sql = """
                 SELECT fb.id, fb.batch_no, fb.species, fb.entry_date, fb.expected_yield,
                        fb.harvested_yield, fb.status, gr.room_code, bb.batch_no AS bag_batch_no,
+                       edo.id AS disposal_id, edo.status AS disposal_status,
                        COALESCE(SUM(CASE WHEN hf.flush_no=1 THEN hf.yield_kg ELSE 0 END),0) AS flush_one,
                        COALESCE(SUM(CASE WHEN hf.flush_no=2 THEN hf.yield_kg ELSE 0 END),0) AS flush_two,
                        COALESCE(SUM(CASE WHEN hf.flush_no=3 THEN hf.yield_kg ELSE 0 END),0) AS flush_three
                 FROM fruiting_batch fb
                 JOIN grow_room gr ON gr.id=fb.room_id
                 JOIN bag_batch bb ON bb.id=fb.bag_batch_id
+                LEFT JOIN environment_disposal_order edo ON edo.room_id=fb.room_id AND edo.active_flag=1
                 LEFT JOIN harvest_flush hf ON hf.batch_id=fb.id
                 GROUP BY fb.id, fb.batch_no, fb.species, fb.entry_date, fb.expected_yield,
-                         fb.harvested_yield, fb.status, gr.room_code, bb.batch_no
+                         fb.harvested_yield, fb.status, gr.room_code, bb.batch_no, edo.id, edo.status
                 ORDER BY fb.entry_date DESC, fb.id
                 """;
         return jdbc.queryForList(sql, Map.of());
