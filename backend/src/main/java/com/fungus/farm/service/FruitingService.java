@@ -41,6 +41,9 @@ public class FruitingService {
             throw new BizException("潮次只能是一潮、二潮或三潮");
         }
         FruitingBatch batch = batch(batchId);
+        if ("环境暂停".equals(batch.getStatus())) {
+            throw new BizException("该批次因环境越限处置暂停生产，处置单解除后才能采收");
+        }
         BigDecimal gradeA = zero(request.gradeAYield());
         BigDecimal gradeB = zero(request.gradeBYield());
         BigDecimal gradeC = zero(request.gradeCYield());

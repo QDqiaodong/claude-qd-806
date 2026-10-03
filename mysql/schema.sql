@@ -3,6 +3,10 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS harvest_inventory;
 DROP TABLE IF EXISTS contamination_record;
 DROP TABLE IF EXISTS harvest_flush;
+DROP TABLE IF EXISTS environment_ticket_event;
+DROP TABLE IF EXISTS environment_ticket_batch;
+DROP TABLE IF EXISTS environment_ticket;
+DROP TABLE IF EXISTS room_env_state;
 DROP TABLE IF EXISTS fruiting_batch;
 DROP TABLE IF EXISTS environment_record;
 DROP TABLE IF EXISTS rack_slot;
@@ -64,8 +68,56 @@ CREATE TABLE environment_record (
     light_lux INT NOT NULL,
     recorded_at DATETIME NOT NULL,
     over_limit TINYINT(1) NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_environment_room_time (room_id, recorded_at),
     KEY idx_environment_room_time (room_id, recorded_at),
     CONSTRAINT fk_environment_room FOREIGN KEY (room_id) REFERENCES grow_room(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 每个菇房一行的环境判定水位线：只有比 last_recorded_at 更新的读数才参与连续越限/恢复判断，
+-- 迟到或乱序读数只存档、不推进状态机。recent_ids 记录最近推进水位线的读数 id，用于触发快照。
+CREATE TABLE room_env_state (
+    room_id BIGINT PRIMARY KEY,
+    last_recorded_at DATETIME NULL,
+    over_streak INT NOT NULL DEFAULT 0,
+    recover_streak INT NOT NULL DEFAULT 0,
+    recent_ids VARCHAR(160) NOT NULL DEFAULT '',
+    CONSTRAINT fk_env_state_room FOREIGN KEY (room_id) REFERENCES grow_room(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 环境越限处置单：同一菇房最多一张未解除单（active_room_id 生成列 + 唯一索引兜底）
+CREATE TABLE environment_ticket (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    room_id BIGINT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    trigger_metric VARCHAR(255) NOT NULL,
+    trigger_readings TEXT NOT NULL,
+    trigger_at DATETIME NOT NULL,
+    over_count INT NOT NULL DEFAULT 3,
+    recover_count INT NOT NULL DEFAULT 0,
+    last_recorded_at DATETIME NOT NULL,
+    claimed_by VARCHAR(40) NULL,
+    claimed_at DATETIME NULL,
+    expected_finish_at DATETIME NULL,
+    resolved_by VARCHAR(40) NULL,
+    resolved_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    active_room_id BIGINT GENERATED ALWAYS AS (IF(status = '已解除', NULL, room_id)) STORED,
+    UNIQUE KEY uk_ticket_active_room (active_room_id),
+    KEY idx_ticket_room (room_id, status),
+    CONSTRAINT fk_ticket_room FOREIGN KEY (room_id) REFERENCES grow_room(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 处置单时间线：触发、接单、处理记录、恶化、恢复待确认、反复、解除
+CREATE TABLE environment_ticket_event (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    ticket_id BIGINT NOT NULL,
+    event_type VARCHAR(16) NOT NULL,
+    actor VARCHAR(40) NULL,
+    detail VARCHAR(500) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_event_ticket (ticket_id, id),
+    CONSTRAINT fk_event_ticket FOREIGN KEY (ticket_id) REFERENCES environment_ticket(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE fruiting_batch (
@@ -95,6 +147,18 @@ CREATE TABLE harvest_flush (
     status VARCHAR(16) NOT NULL,
     UNIQUE KEY uk_batch_flush (batch_id, flush_no),
     CONSTRAINT fk_flush_batch FOREIGN KEY (batch_id) REFERENCES fruiting_batch(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 处置单暂停的出菇批次快照：解除时只恢复本单暂停且仍处于环境暂停的批次
+CREATE TABLE environment_ticket_batch (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    ticket_id BIGINT NOT NULL,
+    fruiting_batch_id BIGINT NOT NULL,
+    prev_status VARCHAR(16) NOT NULL,
+    restored TINYINT(1) NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_ticket_batch (ticket_id, fruiting_batch_id),
+    CONSTRAINT fk_ticket_batch_ticket FOREIGN KEY (ticket_id) REFERENCES environment_ticket(id),
+    CONSTRAINT fk_ticket_batch_batch FOREIGN KEY (fruiting_batch_id) REFERENCES fruiting_batch(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE contamination_record (

@@ -1,15 +1,17 @@
 package com.fungus.farm.service;
 
 import com.fungus.farm.common.BizException;
+import com.fungus.farm.common.EnvironmentLimits;
 import com.fungus.farm.domain.EnvironmentRecord;
 import com.fungus.farm.domain.GrowRoom;
 import com.fungus.farm.dto.EnvironmentRecordRequest;
 import com.fungus.farm.repository.EnvironmentRepository;
 import com.fungus.farm.repository.GrowRoomRepository;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,10 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class EnvironmentService {
     private final EnvironmentRepository environmentRepository;
     private final GrowRoomRepository roomRepository;
+    private final EnvironmentTicketService ticketService;
 
-    public EnvironmentService(EnvironmentRepository environmentRepository, GrowRoomRepository roomRepository) {
+    public EnvironmentService(EnvironmentRepository environmentRepository, GrowRoomRepository roomRepository,
+            EnvironmentTicketService ticketService) {
         this.environmentRepository = environmentRepository;
         this.roomRepository = roomRepository;
+        this.ticketService = ticketService;
     }
 
     public List<Map<String, Object>> dashboard() {
@@ -42,37 +47,35 @@ public class EnvironmentService {
             throw new BizException("菇房、温度、湿度和 CO₂ 均不能为空");
         }
         GrowRoom room = room(request.roomId());
+        LocalDateTime recordedAt = request.recordedAt() == null ? LocalDateTime.now() : request.recordedAt();
+        // 同一菇房同一采集时间的读数只入库一次：重复上报直接返回原记录，不重复推进处置流程
+        Optional<EnvironmentRecord> existing = environmentRepository.findByRoomAndRecordedAt(room.getId(), recordedAt);
+        if (existing.isPresent()) {
+            return existing.get().getId();
+        }
         EnvironmentRecord record = new EnvironmentRecord();
         record.setRoomId(request.roomId());
         record.setTemperature(request.temperature());
         record.setHumidity(request.humidity());
         record.setCo2Ppm(request.co2Ppm());
         record.setLightLux(request.lightLux() == null ? 0 : request.lightLux());
-        record.setRecordedAt(request.recordedAt() == null ? LocalDateTime.now() : request.recordedAt());
-        record.setOverLimit(isOverLimit(room.getSpecies(), record));
-        return environmentRepository.save(record);
+        record.setRecordedAt(recordedAt);
+        record.setOverLimit(EnvironmentLimits.isOverLimit(room.getSpecies(), record));
+        Long id;
+        try {
+            id = environmentRepository.save(record);
+        } catch (DuplicateKeyException e) {
+            // 并发重复上报：以已入库的读数为准，不再重复触发处置逻辑
+            return environmentRepository.lockByRoomAndRecordedAt(room.getId(), recordedAt)
+                    .map(EnvironmentRecord::getId)
+                    .orElseThrow(() -> e);
+        }
+        record.setId(id);
+        ticketService.processReading(room, record);
+        return id;
     }
 
     private GrowRoom room(Long id) {
         return roomRepository.findById(id).orElseThrow(() -> new BizException("菇房不存在"));
-    }
-
-    private boolean isOverLimit(String species, EnvironmentRecord record) {
-        BigDecimal minTemp;
-        BigDecimal maxTemp;
-        BigDecimal minHumidity;
-        BigDecimal maxHumidity = BigDecimal.valueOf(95);
-        int maxCo2;
-        switch (species) {
-            case "金针菇" -> { minTemp = BigDecimal.valueOf(4); maxTemp = BigDecimal.valueOf(12); minHumidity = BigDecimal.valueOf(85); maxCo2 = 1200; }
-            case "杏鲍菇" -> { minTemp = BigDecimal.valueOf(12); maxTemp = BigDecimal.valueOf(18); minHumidity = BigDecimal.valueOf(85); maxCo2 = 1500; }
-            case "香菇" -> { minTemp = BigDecimal.valueOf(12); maxTemp = BigDecimal.valueOf(20); minHumidity = BigDecimal.valueOf(80); maxCo2 = 1500; }
-            default -> { minTemp = BigDecimal.valueOf(15); maxTemp = BigDecimal.valueOf(22); minHumidity = BigDecimal.valueOf(80); maxCo2 = 1800; }
-        }
-        return record.getTemperature().compareTo(minTemp) < 0
-                || record.getTemperature().compareTo(maxTemp) > 0
-                || record.getHumidity().compareTo(minHumidity) < 0
-                || record.getHumidity().compareTo(maxHumidity) > 0
-                || record.getCo2Ppm() > maxCo2;
     }
 }

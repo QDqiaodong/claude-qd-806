@@ -3,18 +3,21 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import router from './router'
 import { farmApi } from './api'
 import EnvironmentDashboard from './views/EnvironmentDashboard.vue'
+import EnvironmentTickets from './views/EnvironmentTickets.vue'
 import FruitingTimeline from './views/FruitingTimeline.vue'
 import ContaminationGrid from './views/ContaminationGrid.vue'
 import RackModel from './views/RackModel.vue'
 
 const commands = [
   { label: '菇房环境仪表盘', short: '环境', path: '/environment', hint: '温湿度 · CO₂ · 24h' },
+  { label: '环境越限处置单', short: '处置', path: '/tickets', hint: '触发 · 接单 · 解除' },
   { label: '出菇潮次时间轴', short: '潮次', path: '/fruiting', hint: '一潮 · 二潮 · 三潮' },
   { label: '菌包污染排查', short: '污染', path: '/contamination', hint: '批量标记 · 处理' },
   { label: '培养架层架立体图', short: '层架', path: '/racks', hint: '格位 · 上架率' }
 ]
 const components = {
   '/environment': EnvironmentDashboard,
+  '/tickets': EnvironmentTickets,
   '/fruiting': FruitingTimeline,
   '/contamination': ContaminationGrid,
   '/racks': RackModel

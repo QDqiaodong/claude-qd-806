@@ -52,6 +52,26 @@ public class FruitingRepository {
         return jdbc.query("SELECT * FROM fruiting_batch WHERE id=:id", Map.of("id", id), batchMapper).stream().findFirst();
     }
 
+    /** 仍在生产的批次：已结束、环境暂停、人工暂停都不算在产 */
+    public List<FruitingBatch> findProductionByRoomId(Long roomId) {
+        return jdbc.query("""
+                SELECT * FROM fruiting_batch
+                WHERE room_id=:roomId AND status NOT IN ('已结束', '环境暂停', '人工暂停')
+                ORDER BY id
+                """, Map.of("roomId", roomId), batchMapper);
+    }
+
+    public void updateStatus(Long batchId, String status) {
+        jdbc.update("UPDATE fruiting_batch SET status=:status WHERE id=:id",
+                new MapSqlParameterSource().addValue("id", batchId).addValue("status", status));
+    }
+
+    /** 解除处置单时精确恢复：只有当前仍是环境暂停的批次才回到原状态 */
+    public int restoreStatusIfEnvPaused(Long batchId, String prevStatus) {
+        return jdbc.update("UPDATE fruiting_batch SET status=:status WHERE id=:id AND status='环境暂停'",
+                new MapSqlParameterSource().addValue("id", batchId).addValue("status", prevStatus));
+    }
+
     public List<HarvestFlush> findFlushes(Long batchId) {
         return jdbc.query("SELECT * FROM harvest_flush WHERE batch_id=:batchId ORDER BY flush_no", Map.of("batchId", batchId), flushMapper);
     }

@@ -91,6 +91,11 @@ onMounted(load)
           <span class="phase-chip">{{ room.status }}</span>
         </header>
 
+        <div v-if="room.ticket_status" class="ticket-strip" :data-status="room.ticket_status">
+          <b>越限处置单 ET-{{ String(room.ticket_id).padStart(4, '0') }}</b>
+          <span>{{ room.ticket_status }}</span>
+        </div>
+
         <div class="gauge-row">
           <div class="mini-gauge-wrap">
             <div class="mini-gauge" :style="gaugeStyle(room, 'temperature')">

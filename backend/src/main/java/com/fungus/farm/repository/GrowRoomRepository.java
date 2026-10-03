@@ -36,7 +36,11 @@ public class GrowRoomRepository {
                 SELECT gr.id, gr.room_code, gr.orientation, gr.area, gr.species, gr.status,
                        COUNT(DISTINCT r.id) AS rack_count,
                        COUNT(DISTINCT fb.id) AS fruiting_batch_count,
-                       CASE WHEN er.over_limit = 1 THEN 1 ELSE 0 END AS alert_count
+                       CASE WHEN er.over_limit = 1 THEN 1 ELSE 0 END AS alert_count,
+                       (SELECT t.id FROM environment_ticket t
+                        WHERE t.room_id = gr.id AND t.status <> '已解除' LIMIT 1) AS ticket_id,
+                       (SELECT t.status FROM environment_ticket t
+                        WHERE t.room_id = gr.id AND t.status <> '已解除' LIMIT 1) AS ticket_status
                 FROM grow_room gr
                 LEFT JOIN rack r ON r.room_id = gr.id
                 LEFT JOIN fruiting_batch fb ON fb.room_id = gr.id AND fb.status <> '已结束'

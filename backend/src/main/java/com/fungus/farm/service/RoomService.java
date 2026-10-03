@@ -1,6 +1,7 @@
 package com.fungus.farm.service;
 
 import com.fungus.farm.common.BizException;
+import com.fungus.farm.common.EnvironmentLimits;
 import com.fungus.farm.domain.BagBatch;
 import com.fungus.farm.domain.EnvironmentRecord;
 import com.fungus.farm.domain.GrowRoom;
@@ -11,7 +12,6 @@ import com.fungus.farm.repository.BagRepository;
 import com.fungus.farm.repository.EnvironmentRepository;
 import com.fungus.farm.repository.GrowRoomRepository;
 import com.fungus.farm.repository.RackRepository;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -117,22 +117,6 @@ public class RoomService {
     }
 
     private List<String> environmentErrors(String species, EnvironmentRecord record) {
-        BigDecimal[] range = switch (species) {
-            case "金针菇" -> new BigDecimal[] {BigDecimal.valueOf(4), BigDecimal.valueOf(12), BigDecimal.valueOf(85), BigDecimal.valueOf(95), BigDecimal.valueOf(1200)};
-            case "杏鲍菇" -> new BigDecimal[] {BigDecimal.valueOf(12), BigDecimal.valueOf(18), BigDecimal.valueOf(85), BigDecimal.valueOf(95), BigDecimal.valueOf(1500)};
-            case "香菇" -> new BigDecimal[] {BigDecimal.valueOf(12), BigDecimal.valueOf(20), BigDecimal.valueOf(80), BigDecimal.valueOf(95), BigDecimal.valueOf(1500)};
-            default -> new BigDecimal[] {BigDecimal.valueOf(15), BigDecimal.valueOf(22), BigDecimal.valueOf(80), BigDecimal.valueOf(95), BigDecimal.valueOf(1800)};
-        };
-        List<String> errors = new ArrayList<>();
-        if (record.getTemperature().compareTo(range[0]) < 0 || record.getTemperature().compareTo(range[1]) > 0) {
-            errors.add("温度 " + record.getTemperature() + "℃（适宜 " + range[0] + "~" + range[1] + "℃）");
-        }
-        if (record.getHumidity().compareTo(range[2]) < 0 || record.getHumidity().compareTo(range[3]) > 0) {
-            errors.add("湿度 " + record.getHumidity() + "%（适宜 " + range[2] + "~" + range[3] + "%）");
-        }
-        if (BigDecimal.valueOf(record.getCo2Ppm()).compareTo(range[4]) > 0) {
-            errors.add("CO₂ " + record.getCo2Ppm() + "ppm（上限 " + range[4] + "ppm）");
-        }
-        return errors;
+        return EnvironmentLimits.violations(species, record);
     }
 }

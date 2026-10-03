@@ -34,6 +34,10 @@ async function loadFlushes() {
 }
 
 function openHarvest(flush) {
+  if (selectedBatch.value?.status === '环境暂停') {
+    ElMessage.warning('该批次因环境越限处置暂停生产，处置单解除后才能采收')
+    return
+  }
   activeFlush.value = flush
   form.harvestDate = flush.harvestDate || new Date().toISOString().slice(0, 10)
   form.gradeAYield = Number(flush.gradeAYield || 0)
@@ -85,8 +89,12 @@ onMounted(loadBatches)
       <div><span>当前批次</span><strong>{{ selectedBatch.batch_no }}</strong></div>
       <div><span>菇房</span><strong>{{ selectedBatch.room_code }}</strong></div>
       <div><span>菌包批次</span><strong>{{ selectedBatch.bag_batch_no }}</strong></div>
+      <div><span>批次状态</span><strong :class="{ 'paused-text': selectedBatch.status === '环境暂停' }">{{ selectedBatch.status }}</strong></div>
       <div><span>预计产量</span><strong>{{ selectedBatch.expected_yield }} kg</strong></div>
       <div class="remaining"><span>剩余预产量</span><strong>{{ remaining.toFixed(1) }} kg</strong></div>
+    </div>
+    <div v-if="selectedBatch?.status === '环境暂停'" class="pause-banner">
+      环境越限处置单未解除，该批次暂停生产与采收；解除后自动恢复原状态。
     </div>
 
     <div class="timeline-stage" v-if="flushes.length">
